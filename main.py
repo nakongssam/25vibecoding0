@@ -1,13 +1,9 @@
 import streamlit as st
 import sqlite3
 from datetime import datetime
-import openai
 
-# OpenAI API 키 설정 (개발 시 환경 변수 또는 안전한 방식으로 관리 필요)
-openai.api_key = "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"
-
-# 데이터베이스 연결
-conn = sqlite3.connect('gratitude_journal.db', check_same_thread=False)
+# 데이터베이스 초기화
+conn = sqlite3.connect('gratitude_journal.db')
 c = conn.cursor()
 c.execute('''
     CREATE TABLE IF NOT EXISTS journal (
@@ -22,81 +18,46 @@ c.execute('''
 ''')
 conn.commit()
 
-# GPT로 긍정적 관점 전환 요청 함수
-def get_positive_feedback(text):
-    try:
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": "너는 학생의 부정적인 감사일기를 긍정적으로 바꿔주는 따뜻한 친구야."},
-                {"role": "user", "content": f"'{text}' 이 문장을 긍정적인 관점에서 다시 써줘."}
-            ]
-        )
-        return response['choices'][0]['message']['content'].strip()
-    except Exception as e:
-        return "(GPT 피드백 오류 발생)"
-
-# 날짜 및 사용자 이름
-st.set_page_config(page_title="감사일기 앱", page_icon="📘", layout="centered")
-st.markdown("<h1 style='text-align: center;'>💙 오늘의 감사일기 💙</h1>", unsafe_allow_html=True)
+# 오늘 날짜
 today = datetime.now().strftime("%Y-%m-%d")
 
-with st.form("gratitude_form"):
-    student_name = st.text_input("닉네임을 입력하세요:", "")
+# 제목
+st.title("📘 오늘의 감사일기")
 
-    entries = []
-    for i in range(1, 4):
-        col1, col2 = st.columns([1, 3])
-        with col1:
-            target = st.text_input(f"감사 대상 {i}", key=f"target_{i}")
-        with col2:
-            content = st.text_input(f"감사 내용 {i}", key=f"content_{i}")
-        entries.append((target, content))
+# 사용자 이름 입력
+student_name = st.text_input("이름 또는 닉네임을 입력하세요", "")
 
-    share_option = st.checkbox("작성한 일기를 익명으로 공유합니다.")
-    submitted = st.form_submit_button("🌸 저장하고 GPT 피드백 받기 🌸")
+# 감사일기 입력 (3개)
+entries = []
+for i in range(1, 4):
+    st.subheader(f"{i}️⃣ 감사 대상 및 내용")
+    target = st.text_input(f"{i}. 감사 대상", key=f"target_{i}")
+    content = st.text_area(f"{i}. 감사 내용", key=f"content_{i}")
+    entries.append((target, content))
 
-    if submitted:
-        if student_name.strip() == "":
-            st.warning("닉네임을 입력해주세요.")
-        else:
-            st.success("감사일기가 저장되었습니다! 아래는 GPT 피드백입니다 ✨")
-            for idx, (target, content) in enumerate(entries, start=1):
-                if target.strip() or content.strip():
-                    c.execute('''
-                        INSERT INTO journal (date, student, entry_number, target, content, shared)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    ''', (today, student_name, idx, target, content, 1 if share_option else 0))
-
-                    feedback = get_positive_feedback(content)
-                    with st.expander(f"GPT 피드백 {idx}"):
-                        st.markdown(f"**원문:** {content}\n\n**긍정적 관점:** {feedback}")
-            conn.commit()
-
-st.markdown("---")
-
-# 사용자별 일기 보기
-st.subheader("🔍 내 일기 히스토리")
-search_name = st.text_input("닉네임으로 검색:")
-if st.button("📅 내 일기 보기"):
-    c.execute("SELECT date, target, content FROM journal WHERE student = ? ORDER BY date DESC", (search_name,))
-    results = c.fetchall()
-    if results:
-        for date, target, content in results:
-            with st.container():
-                st.markdown(f"**[{date}]** 대상: {target}  ")
-                st.markdown(f"내용: {content}")
-                st.markdown("---")
+# 저장 버튼
+if st.button("✅ 저장하기"):
+    if student_name.strip() == "":
+        st.warning("이름 또는 닉네임을 입력해주세요.")
     else:
-        st.info("해당 닉네임의 감사일기가 없습니다.")
+        for idx, (target, content) in enumerate(entries, start=1):
+            if target.strip() or content.strip():
+                c.execute('''
+                    INSERT INTO journal (date, student, entry_number, target, content)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (today, student_name, idx, target, content))
+        conn.commit()
+        st.success("감사일기가 저장되었습니다!")
 
-# 공유된 일기 보기
-st.subheader("🌼 다른 학생들의 감사일기")
-if st.checkbox("공유된 감사일기 보기"):
-    c.execute("SELECT date, target, content FROM journal WHERE shared = 1 ORDER BY date DESC")
+# 공유 일기 목록 보기
+st.markdown("---")
+st.subheader("📖 공유된 감사일기 모아보기")
+
+if st.checkbox("공유된 일기 보기"):
+    c.execute("SELECT date, student, target, content FROM journal WHERE shared = 1 ORDER BY date DESC")
     shared_entries = c.fetchall()
-    for date, target, content in shared_entries:
-        st.markdown(f"📅 **{date}**")
+    for date, student, target, content in shared_entries:
+        st.markdown(f"**[{date}] {student}**")
         st.markdown(f"- 감사 대상: {target}")
         st.markdown(f"- 내용: {content}")
         st.markdown("---")
