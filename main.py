@@ -4,7 +4,7 @@ from datetime import datetime
 import openai
 
 # OpenAI API 키 설정 (개발 시 환경 변수 또는 안전한 방식으로 관리 필요)
-openai.api_key = "YOUR_OPENAI_API_KEY"
+openai.api_key = "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"
 
 # 데이터베이스 연결
 conn = sqlite3.connect('gratitude_journal.db', check_same_thread=False)
